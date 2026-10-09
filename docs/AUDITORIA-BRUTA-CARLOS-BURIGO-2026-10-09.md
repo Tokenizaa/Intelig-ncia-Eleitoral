@@ -262,3 +262,123 @@ Para cada novo achado, registrar:
 - decisão: reutilizar, adaptar, não reutilizar ou manter em aberto.
 
 Não declarar um componente correto só porque está documentado, nem ausente só porque ainda não foi validado. Não executar mudanças no repositório Carlos Búrigo como parte desta auditoria sem autorização específica. Este documento é um inventário técnico inicial no repositório de destino e deve ser atualizado conforme a inspeção avançar.
+
+
+## 11. Segunda passada — pipeline, esquema efetivamente usado e runtime
+
+**Estado desta passada:** inspeção estática adicional dos loaders, validadores, publicação e catálogos. Nenhum script foi executado e nenhum banco foi consultado.
+
+### 11.1 Há duas famílias de modelo eleitoral coexistindo no mesmo repositório
+
+Foram encontrados dois caminhos com contratos diferentes:
+
+**Caminho A — modelo compacto / carga local**
+- Migração: `supabase/migrations/20261007170000_create_clean_electoral_model.sql`.
+- Tabelas principais: `electoral_elections`, `electoral_municipalities`, `electoral_candidates`, `electoral_results_nominal`, `electoral_import_runs`.
+- IDs `bigint identity`, resultados com `zone`, `section`, `votes` e `source_file`.
+- Loader: `scripts/electoral/load-tse-rs.mjs`, usando PostgreSQL local e escrevendo em `electoral_results_nominal`.
+- Validador: `scripts/electoral/validate-tse-rs.mjs`, com baselines de 2018/2022/2026 para esse modelo.
+
+**Caminho B — modelo normalizado / loader remoto**
+- Documentação IE-02 descreve entidades separadas de eleição, turno, cargo, partido, candidato, território, dataset e execução de importação, com UUIDs e fatos associados a `round_id`, `office_id`, `section_id`, `source_dataset_id` e `import_run_id`.
+- Loader: `scripts/electoral/load-tse-candidato-munzona-supabase.mjs`, destinado apenas a 2022 e 2026, usa Supabase diretamente e grava em `electoral_results_totals`.
+- Validador: `scripts/electoral/validate-tse-candidato-munzona-supabase.mjs`, consulta esse segundo modelo.
+
+**Achado:** os caminhos não são simples versões intercambiáveis do mesmo esquema. Os scripts usam tabelas, colunas, identificadores e grãos diferentes. A migração compacta examinada não cria as tabelas `electoral_rounds`, `electoral_offices`, `electoral_source_datasets`, `electoral_results_totals` ou as demais entidades da documentação IE-02.
+
+**Conclusão provisória:** não é seguro escolher uma dessas estruturas como canônica apenas pelo nome do arquivo ou pelo estado descrito no roadmap. Antes de qualquer reutilização, é preciso verificar as migrações completas, o histórico de commits e o esquema real do Supabase local/remoto. A documentação deve nomear explicitamente qual modelo está ativo, qual está legado e se existe plano de migração entre eles.
+
+### 11.2 O loader por município/zona não entrega dados por seção
+
+Em `load-tse-candidato-munzona-supabase.mjs`, o filtro é RS + Deputado Estadual + primeiro turno; as linhas positivas são agregadas por município/zona/candidato, e o payload grava `section_id: null`. O nome da fonte é `votacao_candidato_munzona`.
+
+Isso é coerente com uma fonte de município/zona, mas **não demonstra cobertura por seção**. A presença de uma tabela chamada `electoral_results_totals` ou de campos de seção nulos não substitui a ingestão de arquivos por seção. Para análises de seção, é necessário um pipeline específico e validação independente.
+
+### 11.3 Risco de importação parcial no loader remoto
+
+O loader remoto:
+- remove registros de execuções anteriores pelo nome do arquivo antes de iniciar a nova carga;
+- cria uma execução com status RUNNING;
+- carrega dimensões em lotes;
+- insere fatos em lotes na tabela de totais;
+- marca a execução como COMPLETED no fim.
+
+Não foi identificado, nos trechos examinados, um rollback transacional que abranja a execução completa no Supabase. Se um lote falhar após lotes anteriores terem sido inseridos, a carga pode deixar fatos parciais associados a uma execução que depois é marcada como FAILED. O status ajuda a identificar o problema, mas não garante que a carga anterior tenha sido preservada ou que os fatos parciais não afetem outras consultas.
+
+**Recomendação:** carregar para uma execução/versionamento isolado, validar a execução completa e só então ativá-la como conjunto vigente; alternativamente, garantir limpeza de todos os fatos daquela execução em caso de falha. Testar o comportamento com falha simulada antes de adotar o loader.
+
+### 11.4 Os validadores não são equivalentes e não provam o estado do banco
+
+Há pelo menos dois contratos de validação:
+- `validate-tse-rs.mjs` agrega `electoral_results_nominal` e espera, entre outros valores, 110.480 linhas para 2018;
+- `validate-tse-candidato-munzona-supabase.mjs` procura execuções em `electoral_import_runs`, lê `electoral_results_totals` e espera 416.556 linhas para 2018, além de valores específicos de municípios, candidatos e votos.
+
+Esses valores pertencem a caminhos/modelos diferentes e não devem ser comparados como se representassem necessariamente o mesmo grão. Além disso, o loader remoto examinado rejeita 2018, embora o validador remoto inclua 2018 no seu conjunto esperado. Isso pode refletir histórico de uma carga anterior ou uma dependência de outro loader, mas não está explicado pelo conjunto de arquivos lido.
+
+**Ação:** identificar a origem exata de cada baseline, documentar seu grão e fazer cada validador falhar com código de saída diferente de zero quando encontrar divergência. No validador `validate-tse-rs.mjs`, a consulta imprime `OK`/ `DIVERGENTE`, mas o processo encerra com o status do `psql`; uma divergência de dados, por si só, não aparece codificada como falha de processo no código observado. Isso reduz a confiabilidade do validador em CI se o pipeline apenas observar o exit code.
+
+### 11.5 A publicação analítica tem risco de janela inconsistente
+
+Em `publish-analytics-projection.mjs`, as linhas são calculadas localmente e há uma validação de dimensão regional antes da publicação. Entretanto:
+- a rotina apaga as projeções de anos selecionados antes de completar a nova publicação;
+- depois faz upsert em várias tabelas, em lotes separados;
+- não existe, no script examinado, uma transação única envolvendo todas as tabelas remotas nem uma troca atômica de versão;
+- a tabela `electoral_analytics_municipality_regions` é publicada separadamente e não está na lista de tabelas limpas por ano, porque sua chave é por município;
+- o script faz upsert de `electoral_analytics_elections` antes de limpar a projeção e repete o upsert depois da limpeza.
+
+A última repetição parece redundante, enquanto a limpeza seguida de múltiplos lotes cria uma janela em que o runtime pode ler projeções incompletas. Não é prova de que houve falha real, mas é um risco estrutural do método de publicação.
+
+**Direção recomendada:** publicação imutável por `source_version`/snapshot, validação de contagens e totais, e ativação de uma versão completa por troca atômica. Até existir isso, classificar a publicação como não atômica.
+
+### 11.6 O catálogo contém 100 planos; o runtime declara 80 intents
+
+Comparação estática dos arquivos lidos:
+- `electoral-orchestration.json`: 100 planos únicos;
+- `electoral-skills.json`: 19 skills e 100 mapeamentos de intenção;
+- `electoral-agents.json`: 5 agentes e 100 rotas;
+- `server/electoralIntelligence.ts`: 80 IDs no conjunto `RUNTIME_IMPLEMENTED` e 83 rótulos de `case` observados no dispatcher.
+
+Vinte IDs declarados nos planos não aparecem no conjunto `RUNTIME_IMPLEMENTED`. Entre eles estão `overview.vote_distribution`, `history.turning_points`, `territory.map_growth`, `territory.region_opportunity` e `competition.candidate_context`. Um deles, `territory.region_opportunity`, é marcado como PENDENTE no catálogo; os outros dezenove aparecem marcados como IMPLEMENTADO apesar de não constarem do conjunto explícito de runtime implementado.
+
+Dez IDs que constam do conjunto `RUNTIME_IMPLEMENTED` não aparecem como rótulos `case` no dispatcher, incluindo `overview.total_votes`, `overview.state_share`, `territory.region_strength` e `competition.regional_competition`. Alguns podem ser executados por caminhos especiais antes do switch, portanto isso não prova ausência de execução; prova que o mapeamento não pode ser inferido apenas pelo conjunto e pelo switch. É necessário seguir cada intent até sua resposta final.
+
+**Conclusão:** os estados declarados nos JSONs não são prova suficiente de implementação funcional. A plataforma independente deve gerar ou testar uma matriz automática de 100 intents: catálogo → agente/skill → handler → método → consulta de dados → contrato de saída → teste. Nenhum item deve ser marcado como implementado sem teste de integração reproduzível.
+
+### 11.7 Guardas de contexto não equivalem a autorização de dados
+
+`src/contracts/electoralContext.ts` valida candidato, eleição e cargo contra o workspace e monta `allowedCandidateIds`. É um bom contrato de domínio, mas essa função TypeScript, isoladamente, não demonstra que toda consulta no servidor ou no banco respeita o contexto autorizado.
+
+O servidor de inteligência consultado executa consultas Supabase por candidato/ano e em tabelas de projeção. A auditoria completa deve verificar se o contexto é sempre resolvido no servidor confiável, se os filtros de UF/cargo/turno são aplicados em cada caminho e se as políticas RLS correspondem à política de acesso pretendida.
+
+**Diretriz para a plataforma independente:** validar escopo no servidor antes de executar cálculo ou consulta; usar IDs oficiais contextualizados; não confiar em IDs ou filtros enviados pelo cliente; testar tentativas de cruzar UF, eleição, cargo e candidato.
+
+### 11.8 Fórmulas determinísticas: riscos metodológicos a testar
+
+A leitura de `src/lib/electoral-analytics.ts` aponta itens para testes de domínio:
+- `coveragePercentage` usa por padrão o universo fixo de 497 municípios, adequado ao RS no escopo atual, mas inadequado como default para cobertura nacional ou outras UFs;
+- `compareMunicipalHistory` compara somente municípios presentes no conjunto de destino e trata município ausente no conjunto de origem como zero; municípios que só existam na origem podem desaparecer da lista de mudanças;
+- `consistentGrowth`, `consistentDecline` e `trendReversals` usam união de municípios, mas substituem ausência por zero. Isso pode confundir ausência de dado com votação efetivamente zero;
+- médias e medianas operam sobre as linhas recebidas, não sobre um universo municipal explicitamente completo; o resultado depende da consulta que prepara a entrada;
+- rankings e concentrações são reproduzíveis matematicamente, mas a correção eleitoral depende da definição de denominador, cobertura do conjunto e filtro de cargo/turno.
+
+Não são conclusões de que todas essas métricas estão erradas; são casos-limite que precisam de testes explícitos e documentação metodológica antes de transportar o código.
+
+### 11.9 Segurança e configuração: observações adicionais
+
+- O loader remoto aceita a chave de serviço via argumento de linha de comando ou variável de ambiente. A preferência operacional deve ser variável de ambiente/secret manager; passar segredos em argumentos pode expô-los em histórico ou listagem de processos.
+- A migração compacta dá leitura pública (`anon, authenticated`) a tabelas de fatos e dimensões, mas permite leitura da tabela de execuções somente a `authenticated`. A projeção analítica, por sua vez, usa `private.is_staff()`. A política final precisa ser deliberada por camada, não herdada acidentalmente.
+- Não foi feita varredura de histórico Git, arquivos de ambiente, logs ou workflows para detectar segredos. Este relatório não declara que o repositório esteja livre de segredos.
+
+## 12. Prioridade técnica após a auditoria estática
+
+Antes de adaptar o pipeline à Inteligência Eleitoral, a ordem mais segura é:
+
+1. **Resolver a fonte de verdade do esquema:** inventariar todas as migrações eleitorais e identificar qual esquema existe realmente em cada ambiente.
+2. **Resolver a semântica e a cobertura:** separar município/zona de seção e harmonizar baselines por grão, cargo, UF, turno e ano.
+3. **Tornar a ingestão recuperável:** garantir idempotência, isolamento por execução, limpeza/rollback de falhas e checksums.
+4. **Tornar a publicação atômica/versionada:** impedir que o runtime veja uma projeção parcial.
+5. **Gerar o mapa das 100 intenções:** identificar as 20 intents sem runtime declarado e os dez casos sem dispatcher explícito, verificando caminhos especiais e testes.
+6. **Testar fórmulas com ausências e limites:** universo municipal completo, zero real versus dado ausente, empates, denominadores zero e filtros.
+7. **Só então selecionar código para reutilização:** portar funções puras e contratos aprovados, não scripts ou dependências de banco sem compatibilidade demonstrada.
+
+**Limite da conclusão:** tudo acima é evidência de leitura estática dos arquivos citados. Não foi confirmado se as migrações foram aplicadas, se esses scripts foram usados em produção, se os números esperados correspondem a dados oficiais atuais ou se os riscos descritos já causaram incidente.
