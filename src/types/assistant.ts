@@ -23,6 +23,13 @@ export interface AssistantMessage {
   sender: 'user' | 'assistant';
   timestamp: string;
   text: string;
+  oralBriefingText?: string;
+  kpiSummary?: {
+    label: string;
+    value: string;
+    sublabel?: string;
+    isPositive?: boolean;
+  };
   contextSnapshot?: {
     view: ViewTab;
     startYear: ElectionYear;

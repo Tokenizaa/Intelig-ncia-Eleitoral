@@ -8,6 +8,7 @@ import {
   Target,
   BarChart,
   Award,
+  Calendar,
 } from 'lucide-react';
 import { useFilter } from '../context/FilterContext';
 import { CANDIDATES, MUNICIPALITIES_DATA, MUNICIPALITIES_GEO } from '../data/mockElections';
@@ -24,7 +25,7 @@ import {
 import { ElectoralMapLeaflet } from '../components/ElectoralMapLeaflet';
 
 export const OverviewView: React.FC = () => {
-  const { filters, setActiveTab, setSelectedMunicipalityForDetail } = useFilter();
+  const { filters, setFilters, setActiveTab, setSelectedMunicipalityForDetail } = useFilter();
 
   const candidate = CANDIDATES.find((c) => c.id === filters.mainCandidateId) || CANDIDATES[0];
   const filteredMuns = filterMunicipalities(MUNICIPALITIES_DATA, filters, candidate.id);
@@ -76,22 +77,62 @@ export const OverviewView: React.FC = () => {
               {candidate.name} ({candidate.party} - {candidate.ballotNumber})
             </h2>
           </div>
-          <div className="text-xs text-neutral-500 flex items-center gap-3">
-            <span>Escopo: <strong>{rows.length} Municípios da Serra e RS</strong></span>
-            <span aria-hidden="true" className="text-neutral-300">·</span>
-            <span>Cargo: <strong>{candidate.office}</strong></span>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Seletor Rápido de Ciclos */}
+            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-md text-xs">
+              <span className="text-[11px] text-neutral-500 font-medium px-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-neutral-400" />
+                Ciclo:
+              </span>
+              <button
+                onClick={() => setFilters((f) => ({ ...f, startYear: 2018, endYear: 2022 }))}
+                className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
+                  filters.startYear === 2018 && filters.endYear === 2022
+                    ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                2018→'22
+              </button>
+              <button
+                onClick={() => setFilters((f) => ({ ...f, startYear: 2022, endYear: 2026 }))}
+                className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
+                  filters.startYear === 2022 && filters.endYear === 2026
+                    ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                2022→'26
+              </button>
+              <button
+                onClick={() => setFilters((f) => ({ ...f, startYear: 2018, endYear: 2026 }))}
+                className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
+                  filters.startYear === 2018 && filters.endYear === 2026
+                    ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                2018→'26
+              </button>
+            </div>
+
+            <div className="text-xs text-neutral-500 flex items-center gap-2">
+              <span>Escopo: <strong>{rows.length} Municípios</strong></span>
+              <span aria-hidden="true" className="text-neutral-300">·</span>
+              <span>Cargo: <strong>{candidate.office}</strong></span>
+            </div>
           </div>
         </div>
 
         {/* Grade de Indicadores Principais */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <div>
-            <div className="text-[11px] text-neutral-500 font-medium">Votos Totais (2022)</div>
+            <div className="text-[11px] text-neutral-500 font-medium">Votos Totais ({filters.endYear})</div>
             <div className="text-xl font-bold font-mono text-neutral-900 mt-0.5">
-              {formatNumber(totalVotes2022)}
+              {formatNumber(totalVotesEnd)}
             </div>
             <div className="text-[11px] text-neutral-500 mt-1">
-              {formatNumber(totalVotes2018)} em 2018
+              {formatNumber(totalVotesStart)} em {filters.startYear}
             </div>
           </div>
 
@@ -111,14 +152,14 @@ export const OverviewView: React.FC = () => {
               {formatPercent(pctDiff, 2)}
             </div>
             <div className="text-[11px] text-neutral-500 mt-1">
-              vs base de 2018
+              vs base de {filters.startYear}
             </div>
           </div>
 
           <div>
             <div className="text-[11px] text-neutral-500 font-medium">Participação em Válidos</div>
             <div className="text-xl font-bold font-mono text-neutral-900 mt-0.5">
-              {formatPercent(globalShare2022, 2)}
+              {formatPercent(filters.endYear === 2026 ? globalShare2026 : globalShare2022, 2)}
             </div>
             <div className={`text-[11px] font-mono mt-1 ${ppDiff >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
               {formatPP(ppDiff, 2)}
@@ -155,7 +196,7 @@ export const OverviewView: React.FC = () => {
               Principais Achados Estratégicos
             </h3>
             <p className="text-xs text-neutral-400">
-              Inferências matemáticas calculadas diretamente a partir dos dados do ciclo 2018–2022.
+              Inferências matemáticas calculadas diretamente a partir dos dados do ciclo {filters.startYear}–{filters.endYear}.
             </p>
           </div>
           <span className="text-xs text-neutral-400 font-mono">

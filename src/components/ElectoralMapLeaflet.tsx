@@ -14,6 +14,8 @@ import {
   formatPP,
   formatChange,
 } from '../utils/electoralMath';
+import { useFilter } from '../context/FilterContext';
+import { ElectionYear } from '../types/election';
 import { Layers, ZoomIn, ZoomOut, RotateCcw, MapPin } from 'lucide-react';
 
 export type MapMetricType = 'votes' | 'share' | 'change' | 'concentration' | 'lq';
@@ -25,6 +27,8 @@ interface ElectoralMapLeafletProps {
   heightClass?: string;
   initialMetric?: MapMetricType;
   showControlsBar?: boolean;
+  startYear?: ElectionYear;
+  endYear?: ElectionYear;
 }
 
 export const ElectoralMapLeaflet: React.FC<ElectoralMapLeafletProps> = ({
@@ -34,7 +38,13 @@ export const ElectoralMapLeaflet: React.FC<ElectoralMapLeafletProps> = ({
   heightClass = 'h-[500px]',
   initialMetric = 'votes',
   showControlsBar = true,
+  startYear: propStartYear,
+  endYear: propEndYear,
 }) => {
+  const { filters } = useFilter();
+  const startYear = propStartYear || filters.startYear;
+  const endYear = propEndYear || filters.endYear;
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const polygonLayerGroupRef = useRef<L.LayerGroup | null>(null);
@@ -45,8 +55,8 @@ export const ElectoralMapLeaflet: React.FC<ElectoralMapLeafletProps> = ({
   const [showMarkers, setShowMarkers] = useState(true);
 
   const candidate = CANDIDATES.find((c) => c.id === candidateId) || CANDIDATES[0];
-  const rows = computeMunicipalityMetrics(MUNICIPALITIES_DATA, candidate.id);
-  const totalCandidateVotes = rows.reduce((acc, r) => acc + r.votes2022, 0);
+  const rows = computeMunicipalityMetrics(MUNICIPALITIES_DATA, candidate.id, startYear, endYear);
+  const totalCandidateVotes = rows.reduce((acc, r) => acc + r.votesEnd, 0);
 
   // Determinar cor do polígono conforme a métrica
   const getMetricColor = (munId: string): string => {
@@ -55,17 +65,17 @@ export const ElectoralMapLeaflet: React.FC<ElectoralMapLeafletProps> = ({
 
     switch (metric) {
       case 'votes': {
-        if (r.votes2022 >= 15000) return '#064e3b';
-        if (r.votes2022 >= 3000) return '#047857';
-        if (r.votes2022 >= 1000) return '#10b981';
-        if (r.votes2022 >= 400) return '#6ee7b7';
+        if (r.votesEnd >= 15000) return '#064e3b';
+        if (r.votesEnd >= 3000) return '#047857';
+        if (r.votesEnd >= 1000) return '#10b981';
+        if (r.votesEnd >= 400) return '#6ee7b7';
         return '#d1fae5';
       }
       case 'share': {
-        if (r.share2022 >= 10) return '#064e3b';
-        if (r.share2022 >= 6) return '#047857';
-        if (r.share2022 >= 3) return '#10b981';
-        if (r.share2022 >= 1) return '#6ee7b7';
+        if (r.shareEnd >= 10) return '#064e3b';
+        if (r.shareEnd >= 6) return '#047857';
+        if (r.shareEnd >= 3) return '#10b981';
+        if (r.shareEnd >= 1) return '#6ee7b7';
         return '#d1fae5';
       }
       case 'change': {
@@ -76,7 +86,7 @@ export const ElectoralMapLeaflet: React.FC<ElectoralMapLeafletProps> = ({
         return '#be123c';
       }
       case 'concentration': {
-        const cota = totalCandidateVotes > 0 ? (r.votes2022 / totalCandidateVotes) * 100 : 0;
+        const cota = totalCandidateVotes > 0 ? (r.votesEnd / totalCandidateVotes) * 100 : 0;
         if (cota >= 50) return '#064e3b';
         if (cota >= 10) return '#047857';
         if (cota >= 5) return '#10b981';
@@ -84,9 +94,9 @@ export const ElectoralMapLeaflet: React.FC<ElectoralMapLeafletProps> = ({
         return '#d1fae5';
       }
       case 'lq': {
-        if (r.locationQuotient2022 >= 1.5) return '#064e3b';
-        if (r.locationQuotient2022 >= 1.0) return '#10b981';
-        if (r.locationQuotient2022 >= 0.5) return '#fbbf24';
+        if (r.locationQuotientEnd >= 1.5) return '#064e3b';
+        if (r.locationQuotientEnd >= 1.0) return '#10b981';
+        if (r.locationQuotientEnd >= 0.5) return '#fbbf24';
         return '#f87171';
       }
     }
@@ -151,10 +161,10 @@ export const ElectoralMapLeaflet: React.FC<ElectoralMapLeafletProps> = ({
         const tooltipContent = `
           <div style="font-family: inherit; font-size: 11px; padding: 2px;">
             <strong style="color: #111827; font-size: 12px;">${geo.name}</strong><br/>
-            <span>Votos 2022: <strong>${formatNumber(row?.votes2022)}</strong></span><br/>
-            <span>Part. Válidos: <strong>${formatPercent(row?.share2022, 2)}</strong></span><br/>
-            <span>Saldo: <strong style="color: ${(row?.absChange || 0) >= 0 ? '#047857' : '#be123c'};">${formatChange(row?.absChange)}</strong></span><br/>
-            <span>QL: <strong>${row?.locationQuotient2022.toFixed(2)}</strong></span>
+            <span>Votos ${endYear}: <strong>${formatNumber(row?.votesEnd)}</strong></span><br/>
+            <span>Part. Válidos: <strong>${formatPercent(row?.shareEnd, 2)}</strong></span><br/>
+            <span>Saldo (${startYear}→${endYear}): <strong style="color: ${(row?.absChange || 0) >= 0 ? '#047857' : '#be123c'};">${formatChange(row?.absChange)}</strong></span><br/>
+            <span>QL: <strong>${row?.locationQuotientEnd.toFixed(2)}</strong></span>
           </div>
         `;
         polygon.bindTooltip(tooltipContent, { sticky: true });
@@ -173,15 +183,16 @@ export const ElectoralMapLeaflet: React.FC<ElectoralMapLeafletProps> = ({
     if (showMarkers) {
       RAW_SECTIONS.forEach((section) => {
         const coords = getSectionCoordinates(section);
-        const v22 = section.votes2022?.votes[candidate.id] || 0;
-        const totalValid = section.votes2022?.totalValidVotes || 1;
-        const share = (v22 / totalValid) * 100;
+        const sectionVotesObj = endYear === 2026 ? section.votes2026 : endYear === 2022 ? section.votes2022 : section.votes2018;
+        const vEnd = sectionVotesObj?.votes[candidate.id] || 0;
+        const totalValid = sectionVotesObj?.totalValidVotes || 1;
+        const share = (vEnd / totalValid) * 100;
 
         // Seção em município selecionado fica em destaque
         const isMunMatch = !selectedMunicipalityId || selectedMunicipalityId === 'all' || section.municipalityId === selectedMunicipalityId;
 
         const marker = L.circleMarker(coords, {
-          radius: Math.max(5, Math.min(10, v22 / 15)),
+          radius: Math.max(5, Math.min(10, vEnd / 15)),
           fillColor: '#047857',
           color: '#ffffff',
           weight: 1.5,
@@ -196,8 +207,8 @@ export const ElectoralMapLeaflet: React.FC<ElectoralMapLeafletProps> = ({
               Seção ${section.sectionId} · Zona ${section.zoneId} · ${section.neighborhood}
             </div>
             <div style="border-top: 1px solid #e5e7eb; padding-top: 4px;">
-              <div>${candidate.name}: <strong>${v22} votos (${share.toFixed(1)}%)</strong></div>
-              <div style="color: #6b7280; font-size: 10px;">Comparecimento: ${section.votes2022?.totalVoters || 'N/D'} eleitores</div>
+              <div>${candidate.name} (${endYear}): <strong>${vEnd} votos (${share.toFixed(1)}%)</strong></div>
+              <div style="color: #6b7280; font-size: 10px;">Comparecimento: ${sectionVotesObj?.totalVoters || 'N/D'} eleitores</div>
             </div>
           </div>
         `;
@@ -205,7 +216,7 @@ export const ElectoralMapLeaflet: React.FC<ElectoralMapLeafletProps> = ({
         markerGroup.addLayer(marker);
       });
     }
-  }, [metric, showPolygons, showMarkers, candidate.id, selectedMunicipalityId, rows]);
+  }, [metric, showPolygons, showMarkers, candidate.id, selectedMunicipalityId, rows, startYear, endYear]);
 
   // Se o município selecionado mudar, centraliza mapa suavemente
   useEffect(() => {

@@ -39,6 +39,8 @@ export function generateContextualResponse(
   );
 
   let responseText = '';
+  let oralBriefingText = '';
+  let kpiSummary: { label: string; value: string; sublabel?: string; isPositive?: boolean } | undefined;
   const evidences: EvidenceReference[] = [];
   const followUps: string[] = [];
 
@@ -53,6 +55,19 @@ export function generateContextualResponse(
   ) {
     const absChange = munMetric?.absChange ?? 0;
     const isLoss = absChange < 0;
+
+    oralBriefingText = `Em ${munData.name}, ${currentCandidate.name} registrou saldo de ${formatChange(absChange)} votos entre ${context.startYear} e ${context.endYear}. ${
+      isLoss
+        ? 'A causa principal não foi abstenção, mas migração concentrada de votos para concorrentes regionais nas seções eleitorais auditadas.'
+        : 'O município registrou expansão consistente de votos e consolidou participação eleitoral.'
+    }`;
+
+    kpiSummary = {
+      label: `Saldo Eleitoral (${context.startYear}→${context.endYear})`,
+      value: `${formatChange(absChange)} votos`,
+      sublabel: munMetric?.pctChange !== null ? `${formatPercent(munMetric?.pctChange, 1)} no período` : undefined,
+      isPositive: !isLoss,
+    };
 
     responseText = `### Diagnóstico Territorial: ${munData.name} (${context.startYear} → ${context.endYear})\n\n`;
     responseText += `Ao analisar os dados oficiais do TSE para **${currentCandidate.name}** em **${munData.name}**:\n\n`;
@@ -119,12 +134,24 @@ export function generateContextualResponse(
     queryLower.includes('pasin') ||
     queryLower.includes('pepe')
   ) {
-    responseText = `### Análise de Migração e Disputa de Votos: ${munData.name}\n\n`;
-    responseText += `Examinando as urnas e seções eleitorais de **${munData.name}** no ciclo **${context.startYear} → ${context.endYear}**:\n\n`;
-
     const topLossSections = [...disputeAnalysis]
       .sort((a, b) => a.mainCandidateDiff - b.mainCandidateDiff)
       .slice(0, 3);
+    const mainAdv = topLossSections[0]?.primaryBeneficiary || topLossSections[0]?.competitors[0];
+
+    oralBriefingText = `Na disputa em ${munData.name}, a auditoria por seções revela que os votos em declínio de ${currentCandidate.name} migraram diretamente para ${
+      mainAdv ? mainAdv.candidateName : 'concorrentes regionais'
+    } nas urnas da área central.`;
+
+    kpiSummary = {
+      label: 'Maior Beneficiário de Migração',
+      value: mainAdv ? mainAdv.candidateName : 'Concorrentes da Serra',
+      sublabel: mainAdv ? `+${mainAdv.diff} votos na seção mais crítica` : undefined,
+      isPositive: false,
+    };
+
+    responseText = `### Análise de Migração e Disputa de Votos: ${munData.name}\n\n`;
+    responseText += `Examinando as urnas e seções eleitorais de **${munData.name}** no ciclo **${context.startYear} → ${context.endYear}**:\n\n`;
 
     responseText += `| Zona / Seção | Búrigo (${context.startYear}→${context.endYear}) | Principal Beneficiário | Ganho do Concorrente |\n`;
     responseText += `| :--- | :--- | :--- | :--- |\n`;
@@ -162,12 +189,21 @@ export function generateContextualResponse(
     queryLower.includes('histórico') ||
     queryLower.includes('evolução')
   ) {
-    responseText = `### Trajetória Histórica Consolidada (2018 · 2022 · 2026)\n\n`;
-    responseText += `Evolução de **${currentCandidate.name}** no município de **${munData.name}** ao longo dos três pleitos:\n\n`;
-
     const v18 = munMetric?.votes2018 ?? 0;
     const v22 = munMetric?.votes2022 ?? 0;
     const v26 = munMetric?.votes2026 ?? 0;
+
+    oralBriefingText = `Na trajetória histórica em ${munData.name}, ${currentCandidate.name} teve ${formatNumber(v18)} votos em 2018, ${formatNumber(v22)} em 2022 e atingiu ${formatNumber(v26)} votos em 2026, confirmando recuperação territorial de ${formatChange(v26 - v22)} votos no ciclo recente.`;
+
+    kpiSummary = {
+      label: 'Votação em 2026',
+      value: `${formatNumber(v26)} votos`,
+      sublabel: `Saldo '22→'26: ${formatChange(v26 - v22)} votos (${formatPercent(munMetric?.share2026, 1)} dos válidos)`,
+      isPositive: v26 >= v22,
+    };
+
+    responseText = `### Trajetória Histórica Consolidada (2018 · 2022 · 2026)\n\n`;
+    responseText += `Evolução de **${currentCandidate.name}** no município de **${munData.name}** ao longo dos três pleitos:\n\n`;
 
     responseText += `- **Eleição 2018**: ${formatNumber(v18)} votos (${formatPercent(munMetric?.share2018, 2)} válidos)\n`;
     responseText += `- **Eleição 2022**: ${formatNumber(v22)} votos (${formatPercent(munMetric?.share2022, 2)} válidos) → *Saldo '18→'22: ${formatChange(v22 - v18)}*\n`;
@@ -201,6 +237,15 @@ export function generateContextualResponse(
     queryLower.includes('urna') ||
     queryLower.includes('bairro')
   ) {
+    oralBriefingText = `Em ${munData.name}, foram auditadas seções nas zonas ${munData.zones.join(' e ')}. As maiores variações de votos concentram-se nos locais de votação de maior densidade de eleitores da área urbana.`;
+
+    kpiSummary = {
+      label: 'Amostra Auditada',
+      value: `${sectionsOfMun.length} seções`,
+      sublabel: `Zonas ${munData.zones.join(', ')}`,
+      isPositive: true,
+    };
+
     responseText = `### Microanálise de Zonas e Seções em ${munData.name}\n\n`;
     responseText += `O município conta com **${munData.zones.length} Zonas Eleitorais** (Zonas ${munData.zones.join(', ')}) e centenas de seções de votação.\n\n`;
 
@@ -238,6 +283,15 @@ export function generateContextualResponse(
     queryLower.includes('brancos') ||
     queryLower.includes('nulos')
   ) {
+    oralBriefingText = `A hipótese de abstenção como causa da perda em ${munData.name} foi refutada. Os votos válidos no município aumentaram, comprovando que a retração foi perda de participação relativa para concorrentes.`;
+
+    kpiSummary = {
+      label: 'Teste de Hipótese',
+      value: 'Refutada',
+      sublabel: 'Votos válidos cresceram no município',
+      isPositive: false,
+    };
+
     responseText = `### Teste de Hipótese: Impacto da Abstenção e Votos Válidos\n\n`;
     responseText += `**Hipótese testada**: "A queda de votação em ${munData.name} decorreu primariamente do aumento da abstenção ou votos brancos/nulos."\n\n`;
     responseText += `**Resultado do Teste**: ⚠️ **Hipótese Refutada / Efeito Secundário**.\n\n`;
@@ -264,6 +318,15 @@ export function generateContextualResponse(
 
   // Consulta Geral / Padrão Contextual
   else {
+    oralBriefingText = `Você está analisando ${munData.name} no ciclo ${context.startYear} a ${context.endYear}, com ${formatNumber(munMetric?.votesEnd)} votos contabilizados para ${currentCandidate.name}.`;
+
+    kpiSummary = {
+      label: `Votação ${context.endYear}`,
+      value: `${formatNumber(munMetric?.votesEnd)} votos`,
+      sublabel: `Saldo (${context.startYear}→${context.endYear}): ${formatChange(munMetric?.absChange)} votos`,
+      isPositive: (munMetric?.absChange || 0) >= 0,
+    };
+
     responseText = `### Síntese Analítica Contextual\n\n`;
     responseText += `Você está na página **${context.viewName}**, analisando o candidato **${currentCandidate.name}** no ciclo **${context.startYear} → ${context.endYear}**.\n\n`;
     responseText += `- **Município em foco**: ${munData.name} (${munData.region})\n`;
@@ -300,6 +363,8 @@ export function generateContextualResponse(
     sender: 'assistant',
     timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
     text: responseText,
+    oralBriefingText,
+    kpiSummary,
     contextSnapshot: {
       view: context.view,
       startYear: context.startYear,

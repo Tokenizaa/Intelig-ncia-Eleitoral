@@ -90,29 +90,6 @@ export const TerritorialView: React.FC = () => {
     };
   });
 
-  // Seções com maiores ganhos e perdas
-  const sectionsWithDelta = municipalSections
-    .map((s) => {
-      const v18 = s.votes2018?.votes[candidate.id];
-      const v22 = s.votes2022?.votes[candidate.id];
-      const absDiff = v18 !== undefined && v22 !== undefined ? v22 - v18 : null;
-      return {
-        ...s,
-        v18,
-        v22,
-        absDiff,
-      };
-    })
-    .filter((s) => s.absDiff !== null);
-
-  const sectionGains = [...sectionsWithDelta]
-    .filter((s) => (s.absDiff ?? 0) > 0)
-    .sort((a, b) => (b.absDiff ?? 0) - (a.absDiff ?? 0));
-
-  const sectionLosses = [...sectionsWithDelta]
-    .filter((s) => (s.absDiff ?? 0) < 0)
-    .sort((a, b) => (a.absDiff ?? 0) - (b.absDiff ?? 0));
-
   return (
     <div className="space-y-6">
       {/* Barra de Navegação Hierárquica */}

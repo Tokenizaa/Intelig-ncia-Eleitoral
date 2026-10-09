@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   PieChart,
   HelpCircle,
@@ -6,6 +6,7 @@ import {
   Info,
   Scale,
   Activity,
+  Calendar,
 } from 'lucide-react';
 import { useFilter } from '../context/FilterContext';
 import { CANDIDATES, MUNICIPALITIES_DATA } from '../data/mockElections';
@@ -16,16 +17,20 @@ import {
   formatDecimal,
   filterMunicipalities,
 } from '../utils/electoralMath';
+import { ElectionYear } from '../types/election';
 
 export const ConcentrationView: React.FC = () => {
   const { filters } = useFilter();
+  const [selectedYear, setSelectedYear] = useState<ElectionYear>(filters.endYear || 2026);
   const candidate = CANDIDATES.find((c) => c.id === filters.mainCandidateId) || CANDIDATES[0];
 
   const filteredMuns = filterMunicipalities(MUNICIPALITIES_DATA, filters, candidate.id);
   const activeMuns = filteredMuns.length > 0 ? filteredMuns : MUNICIPALITIES_DATA;
 
-  const concentration2022 = calcConcentration(activeMuns, candidate.id, 2022);
-  const concentration2018 = calcConcentration(activeMuns, candidate.id, 2018);
+  const compareYear: ElectionYear = selectedYear === 2026 ? 2022 : selectedYear === 2022 ? 2018 : 2018;
+
+  const currentConcentration = calcConcentration(activeMuns, candidate.id, selectedYear);
+  const previousConcentration = calcConcentration(activeMuns, candidate.id, compareYear);
 
   const {
     totalCandidateVotes,
@@ -38,7 +43,7 @@ export const ConcentrationView: React.FC = () => {
     gini,
     lorenzPoints,
     distributionTable,
-  } = concentration2022;
+  } = currentConcentration;
 
   return (
     <div className="space-y-6">
@@ -48,14 +53,38 @@ export const ConcentrationView: React.FC = () => {
           <div>
             <div className="text-xs text-neutral-500 font-medium">Estatística Espacial Descritiva</div>
             <h2 className="text-lg font-bold text-neutral-900 tracking-tight">
-              Análise de Concentração Territorial dos Votos (Eleição {filters.endYear})
+              Análise de Concentração Territorial dos Votos (Eleição {selectedYear})
             </h2>
             <p className="text-xs text-neutral-600 mt-0.5">
               Avaliação do grau de dispersão vs centralização espacial da votação de {candidate.name}.
             </p>
           </div>
-          <div className="text-xs text-neutral-500 font-mono">
-            Universo: {formatNumber(totalCandidateVotes)} votos em {distributionTable.length} municípios
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Seletor de Pleito para Concentração */}
+            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-md text-xs">
+              <span className="text-[11px] text-neutral-500 font-medium px-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-neutral-400" />
+                Pleito:
+              </span>
+              {([2018, 2022, 2026] as ElectionYear[]).map((yr) => (
+                <button
+                  key={yr}
+                  onClick={() => setSelectedYear(yr)}
+                  className={`px-2.5 py-1 rounded font-medium transition-colors cursor-pointer ${
+                    selectedYear === yr
+                      ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                      : 'text-neutral-600 hover:text-neutral-900'
+                  }`}
+                >
+                  {yr}
+                </button>
+              ))}
+            </div>
+
+            <div className="text-xs text-neutral-500 font-mono">
+              Universo: {formatNumber(totalCandidateVotes)} votos em {distributionTable.length} municípios
+            </div>
           </div>
         </div>
 
@@ -107,7 +136,7 @@ export const ConcentrationView: React.FC = () => {
               {formatNumber(hhi)}
             </div>
             <div className="text-[11px] text-neutral-500">
-              ({formatNumber(concentration2018.hhi)} em 2018)
+              ({formatNumber(previousConcentration.hhi)} em {compareYear})
             </div>
           </div>
 
@@ -117,7 +146,7 @@ export const ConcentrationView: React.FC = () => {
               {formatDecimal(gini, 3)}
             </div>
             <div className="text-[11px] text-neutral-500">
-              ({formatDecimal(concentration2018.gini, 3)} em 2018)
+              ({formatDecimal(previousConcentration.gini, 3)} em {compareYear})
             </div>
           </div>
         </div>
@@ -290,7 +319,7 @@ export const ConcentrationView: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-sm font-semibold text-neutral-900">
-              Tabela de Concentração e Participação Acumulada (2022)
+              Tabela de Concentração e Participação Acumulada ({selectedYear})
             </h3>
             <p className="text-xs text-neutral-500">
               Municípios ordenados por volume de votação decrescente com cálculo de cota individual e acumulada.

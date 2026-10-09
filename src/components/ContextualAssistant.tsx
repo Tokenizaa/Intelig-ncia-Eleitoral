@@ -16,6 +16,12 @@ import {
   Minimize2,
   Maximize2,
   FolderOpen,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Play,
+  Square,
 } from 'lucide-react';
 import { useAssistant } from '../context/AssistantContext';
 import { InvestigationStatus } from '../types/assistant';
@@ -41,6 +47,11 @@ export const ContextualAssistant: React.FC = () => {
   const [newObjective, setNewObjective] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Estados de Voz (STT e TTS)
+  const [isListening, setIsListening] = useState(false);
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [speechRate, setSpeechRate] = useState<number>(1.0);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -50,9 +61,72 @@ export const ContextualAssistant: React.FC = () => {
     }
   }, [isOpen, activeInvestigation.messages.length]);
 
+  // Interrupção de fala com a tecla Escape
+  useEffect(() => {
+    const handleKeyDownGlobal = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && speakingMessageId) {
+        stopSpeech();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDownGlobal);
+    return () => window.removeEventListener('keydown', handleKeyDownGlobal);
+  }, [speakingMessageId]);
+
+  const stopSpeech = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setSpeakingMessageId(null);
+    }
+  };
+
+  const playOralBriefing = (msgId: string, text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    if (speakingMessageId === msgId) {
+      stopSpeech();
+      return;
+    }
+    stopSpeech();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'pt-BR';
+    utterance.rate = speechRate;
+    utterance.onend = () => setSpeakingMessageId(null);
+    utterance.onerror = () => setSpeakingMessageId(null);
+    setSpeakingMessageId(msgId);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const startListening = () => {
+    const SpeechRec =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      alert('Reconhecimento de voz não suportado neste navegador. Utilize Google Chrome ou Microsoft Edge.');
+      return;
+    }
+    try {
+      const recognition = new SpeechRec();
+      recognition.lang = 'pt-BR';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = () => setIsListening(false);
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          setInputMessage((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        }
+      };
+      recognition.start();
+    } catch {
+      setIsListening(false);
+    }
+  };
+
   const handleSend = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputMessage.trim()) return;
+    stopSpeech();
     sendMessage(inputMessage);
     setInputMessage('');
   };
