@@ -1,0 +1,6 @@
+{
+  "name": "Plataforma de Inteligência Eleitoral",
+  "description": "Sistema analítico profissional para investigação, comparação territorial e planejamento estratégico de resultados eleitorais.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
