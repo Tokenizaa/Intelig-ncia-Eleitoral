@@ -382,3 +382,64 @@ Antes de adaptar o pipeline à Inteligência Eleitoral, a ordem mais segura é:
 7. **Só então selecionar código para reutilização:** portar funções puras e contratos aprovados, não scripts ou dependências de banco sem compatibilidade demonstrada.
 
 **Limite da conclusão:** tudo acima é evidência de leitura estática dos arquivos citados. Não foi confirmado se as migrações foram aplicadas, se esses scripts foram usados em produção, se os números esperados correspondem a dados oficiais atuais ou se os riscos descritos já causaram incidente.
+
+
+## 13. Terceira passada — testes, chatbot e dimensão regional
+
+### 13.1 Há testes unitários, mas parte deles valida contratos mockados
+
+A árvore do repositório contém:
+- `tests/unit/electoral-analytics.test.ts`;
+- `tests/unit/electoral-intelligence.test.ts`;
+- `tests/unit/electoral-chatbot.test.ts`;
+- `tests/unit/electoral-dashboard.test.ts`;
+- `tests/unit/electoral-presentation.test.ts`;
+- `tests/unit/electoral-report.test.ts`;
+- `tests/api/electoral-candidates.test.ts`.
+
+A existência desses arquivos é positiva, mas esta auditoria não os executou. A leitura de `electoral-intelligence.test.ts` mostra consultas simuladas com datasets sintéticos e respostas mockadas do Supabase. Isso valida parte do comportamento do código com fixtures, mas não prova que o banco publicado tenha o mesmo conteúdo nem que as queries reais funcionem com o schema aplicado.
+
+O teste de API `electoral-candidates.test.ts` verifica que endpoints eleitorais rejeitam requisições sem autenticação (401). É uma evidência útil para esse caso específico, mas não prova que todos os caminhos estejam protegidos por autorização por papel, workspace, UF, eleição e cargo.
+
+### 13.2 Os testes analíticos não cobrem explicitamente todos os riscos identificados
+
+O teste `electoral-analytics.test.ts` cobre agregações básicas, percentuais com denominador zero, concentração Top-K, rankings, mudanças históricas e algumas métricas territoriais/competitivas. Entretanto, no trecho lido, não há teste explícito para:
+- município existente no ano anterior, mas ausente no ano posterior;
+- diferença entre zero eleitoral real e ausência de dado;
+- universo municipal parametrizado para outras UFs;
+- empate de ranking em todas as posições relevantes;
+- divergência de soma por granularidade;
+- dados duplicados ou múltiplos candidatos com número de urna reutilizado em eleições diferentes;
+- reconciliação automática entre fatos e baseline oficial.
+
+Alguns desses casos podem estar cobertos em outros testes ou no restante do arquivo; não foram encontrados na leitura estática realizada. O ponto é criar testes explícitos para os riscos metodológicos, não presumir cobertura por existir um arquivo de teste.
+
+### 13.3 O chatbot tem contrato declarado como pronto, mas o próprio catálogo marca runtime pendente
+
+`src/data/electoral-chatbot.json` declara:
+- colocação dentro do dashboard existente do gabinete;
+- acesso privado com autenticação/RBAC do gabinete;
+- pipeline pergunta → resolução de escopo → intent → plano → resultado determinístico → RAG metodológico → interpretação;
+- proibição de inventar números/fórmulas e de acessar banco local/arquivos brutos pelo browser;
+- estado `CONTRACT_READY_RUNTIME_PENDING`;
+- dependências pendentes: publicar projeção analítica, ligar runtime de orquestração à aplicação, conectar provider LLM após o resultado determinístico e executar integração/E2E.
+
+Esse arquivo é explícito: o contrato conceitual do chatbot não deve ser confundido com runtime concluído. A documentação de agentes também diz que a implementação operacional de chatbot, RAG e chamada real de LLM pertence a fase posterior.
+
+**Consequência para o projeto independente:** aproveitar o pipeline conceitual e o contrato de saída, mas implementar o runtime próprio como parte da plataforma independente. Não assumir que o projeto Carlos Búrigo já oferece um runtime de agentes/skills transplantável e pronto para produção.
+
+### 13.4 Dimensão regional é um componente adicional, não parte garantida do esquema compacto
+
+A árvore contém migrações posteriores:
+- `20261008190000_create_electoral_regional_dimension.sql`;
+- `20261008200000_fix_electoral_rgi_tse_ibge_crosswalk.sql`.
+
+O script de publicação também lê `src/data/ibge-rs-rgi-2024.json`, associa municípios por nome normalizado e falha se não encontrar código IBGE/região. Esse mecanismo é útil como dimensão geográfica, mas a associação por nome normalizado merece auditoria de colisões, exceções e mudanças de nomenclatura. O código IBGE/TSE deve ser a chave primária do cruzamento sempre que a fonte fornecer código confiável; o nome pode servir como diagnóstico ou fallback controlado.
+
+Como o script publica uma tabela regional por município sem chave de ano, é importante verificar a migração regional e a versão do cruzamento: a região geográfica pode permanecer estável entre eleições, mas a dimensão de correspondência e os códigos de referência precisam de versionamento e rastreabilidade próprios.
+
+### 13.5 Inventário da árvore confirmou ausência de testes e migrações eleitorais no projeto de destino
+
+A árvore consultada do repositório Inteligência Eleitoral continha 40 caminhos no momento da leitura, sem diretório de migrações eleitorais ou arquivos de teste identificados pelo filtro de nomes utilizado. Isso não prova que não exista validação manual ou fora do repositório, mas indica que a base de testes e o pipeline de dados ainda não estão representados no código versionado encontrado.
+
+**Próxima necessidade para o projeto independente:** estabelecer desde o início testes para fórmulas, contratos, ingestão, reconciliação, autorização e runtime de IA, evitando transferir a dívida de evidência do projeto de referência.
