@@ -302,7 +302,9 @@ Aprovar esta especificação, criar glossário, registro de fontes, template de 
 Inventariar conjuntos oficiais por eleição, cargo, turno, UF e granularidade; registrar layouts e licenças; mapear chaves e mudanças temporais. Decidir o esquema físico com base em consultas concretas.
 
 ### Fase 3 — Um pipeline vertical verificável
-Escolher um recorte limitado, por exemplo um cargo, turno, UF e eleição; adquirir artefatos oficiais, preservar originais, processar em staging, validar e publicar uma versão reproduzível. Não declarar cobertura nacional a partir de um piloto regional.
+O recorte inicial documentado é **Eleições Gerais de 2022, Deputado Estadual, 1º turno, Rio Grande do Sul, votação nominal por seção**, identificado como `pilot-2022-rs-deputado-estadual-turno-1-secao`. A escolha é provisória e metodológica: o catálogo oficial do TSE possui um recurso estadual de votação por seção e informa que os arquivos por UF incluem Deputado Estadual. A ficha específica registra a fonte e separa o que foi confirmado no catálogo do que depende de inspeção do arquivo real.
+
+A URL do recurso foi identificada, mas o download não foi concluído na sessão de registro. Portanto, layout exato, checksum, colunas, chaves, cobertura, totais de referência e reconciliação continuam pendentes; o piloto está **documentado, não adquirido e não validado**. A próxima execução deverá preservar o original, verificar o layout, processar em staging, reconciliar totais compatíveis e testar a publicação atômica antes de expor resultados. Não declarar cobertura nacional a partir de um piloto regional.
 
 ### Fase 4 — Biblioteca de indicadores
 Implementar apenas indicadores com ficha aprovada, função determinística, testes independentes e documentação de interpretação.
@@ -328,8 +330,11 @@ A Fase 1 só pode ser considerada concluída quando existirem no repositório:
 - registro inicial de fontes oficiais e seus layouts;
 - política de proveniência, versão e estados de validação;
 - critérios de gate codificáveis em checklist;
-- decisão documentada sobre o recorte do primeiro pipeline;
+- decisão documentada sobre o recorte do primeiro pipeline, com ficha metodológica específica e estado de evidência explícito;
+- critérios de gate objetivos, com falhas críticas capazes de bloquear a publicação e gerar falha efetiva do processo;
 - revisão independente que confirme ausência de contradições entre esses artefatos.
+
+**Estado registrado em 2026-10-09:** a base documental e o recorte-piloto estão registrados. A Fase 1 permanece **parcialmente concluída**: o recurso do TSE foi identificado no catálogo, mas a aquisição não foi concluída; layout, checksum, reconciliação e revisão independente permanecem pendentes. Não há, neste registro, evidência de pipeline implementado ou de validação empírica.
 
 A existência deste documento isoladamente **não** significa que a plataforma esteja cientificamente validada, nem que qualquer dado, fórmula ou relatório atual esteja aprovado.
 
