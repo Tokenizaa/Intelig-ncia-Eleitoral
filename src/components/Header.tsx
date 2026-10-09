@@ -1,12 +1,14 @@
 import React from 'react';
-import { SlidersHorizontal, Download, Printer, RefreshCw } from 'lucide-react';
+import { SlidersHorizontal, Download, Printer, RefreshCw, Sparkles } from 'lucide-react';
 import { useFilter } from '../context/FilterContext';
+import { useAssistant } from '../context/AssistantContext';
 import { exportToCSV } from '../utils/csvExport';
 import { MUNICIPALITIES_DATA } from '../data/mockElections';
 import { computeMunicipalityMetrics, formatNumber, formatPercent, formatPP } from '../utils/electoralMath';
 
 export const Header: React.FC = () => {
   const { filters, activeTab, setIsFilterModalOpen, resetFilters } = useFilter();
+  const { toggleOpen, isOpen } = useAssistant();
 
   const handleExportCSV = () => {
     const rows = computeMunicipalityMetrics(MUNICIPALITIES_DATA, filters.mainCandidateId);
@@ -94,6 +96,19 @@ export const Header: React.FC = () => {
 
         {/* Action Controls */}
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={toggleOpen}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+              isOpen
+                ? 'bg-emerald-800 text-white shadow-xs'
+                : 'text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200'
+            }`}
+            title="Abrir Assistente de Inteligência Eleitoral"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Assistente IA</span>
+          </button>
+
           <button
             onClick={() => setIsFilterModalOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 bg-neutral-100 hover:bg-neutral-200/80 rounded-md transition-colors"

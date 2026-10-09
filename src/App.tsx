@@ -1,9 +1,11 @@
 import React from 'react';
 import { FilterProvider, useFilter } from './context/FilterContext';
+import { AssistantProvider } from './context/AssistantContext';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { ActiveFiltersBar } from './components/ActiveFiltersBar';
 import { GlobalFiltersModal } from './components/GlobalFiltersModal';
+import { ContextualAssistant } from './components/ContextualAssistant';
 
 // Views
 import { OverviewView } from './views/OverviewView';
@@ -52,6 +54,7 @@ const MainContent: React.FC = () => {
         {renderActiveView()}
       </main>
       <GlobalFiltersModal />
+      <ContextualAssistant />
     </div>
   );
 };
@@ -59,10 +62,12 @@ const MainContent: React.FC = () => {
 export default function App() {
   return (
     <FilterProvider>
-      <div className="flex h-screen w-screen overflow-hidden bg-neutral-100 font-sans text-neutral-900">
-        <Sidebar />
-        <MainContent />
-      </div>
+      <AssistantProvider>
+        <div className="flex h-screen w-screen overflow-hidden bg-neutral-100 font-sans text-neutral-900">
+          <Sidebar />
+          <MainContent />
+        </div>
+      </AssistantProvider>
     </FilterProvider>
   );
 }

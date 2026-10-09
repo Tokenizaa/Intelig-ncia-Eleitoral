@@ -9,6 +9,7 @@ import {
   Layers,
   Vote,
   Download,
+  Calendar,
 } from 'lucide-react';
 import { useFilter } from '../context/FilterContext';
 import { CANDIDATES, MUNICIPALITIES_DATA, RAW_SECTIONS } from '../data/mockElections';
@@ -24,7 +25,7 @@ import {
 import { exportToCSV } from '../utils/csvExport';
 
 export const ZonesSectionsView: React.FC = () => {
-  const { filters } = useFilter();
+  const { filters, setFilters } = useFilter();
 
   const [selectedMun, setSelectedMun] = useState<string>(filters.municipalityId);
   const [selectedZone, setSelectedZone] = useState<string>(filters.zoneId);
@@ -52,7 +53,7 @@ export const ZonesSectionsView: React.FC = () => {
     return mun ? mun.zones : [];
   }, [selectedMun]);
 
-  // Seções filtradas com cálculo completo
+  // Seções filtradas com cálculo completo nos 3 pleitos
   const enrichedSections = useMemo(() => {
     return RAW_SECTIONS.filter((s) => {
       if (selectedMun !== 'all' && s.municipalityId !== selectedMun) return false;
@@ -69,16 +70,25 @@ export const ZonesSectionsView: React.FC = () => {
     }).map((s) => {
       const v18 = s.votes2018?.votes[candidate.id];
       const v22 = s.votes2022?.votes[candidate.id];
+      const v26 = s.votes2026?.votes[candidate.id];
 
       const valid18 = s.votes2018?.totalValidVotes;
       const valid22 = s.votes2022?.totalValidVotes;
+      const valid26 = s.votes2026?.totalValidVotes;
 
       const share18 = v18 !== undefined && valid18 ? (v18 / valid18) * 100 : undefined;
       const share22 = v22 !== undefined && valid22 ? (v22 / valid22) * 100 : undefined;
+      const share26 = v26 !== undefined && valid26 ? (v26 / valid26) * 100 : undefined;
 
-      const absChange = calcAbsoluteChange(v22, v18);
-      const pctChange = calcPercentChange(v22, v18);
-      const ppChange = calcPPChange(share22, share18);
+      const vStart = filters.startYear === 2018 ? v18 : filters.startYear === 2022 ? v22 : v26;
+      const vEnd = filters.endYear === 2018 ? v18 : filters.endYear === 2022 ? v22 : v26;
+
+      const shareStart = filters.startYear === 2018 ? share18 : filters.startYear === 2022 ? share22 : share26;
+      const shareEnd = filters.endYear === 2018 ? share18 : filters.endYear === 2022 ? share22 : share26;
+
+      const absChange = calcAbsoluteChange(vEnd, vStart);
+      const pctChange = calcPercentChange(vEnd, vStart);
+      const ppChange = calcPPChange(shareEnd, shareStart);
 
       const munName = MUNICIPALITIES_DATA.find((m) => m.id === s.municipalityId)?.name || s.municipalityId;
 
@@ -87,17 +97,24 @@ export const ZonesSectionsView: React.FC = () => {
         munName,
         v18,
         v22,
+        v26,
         valid18,
         valid22,
+        valid26,
         share18,
         share22,
+        share26,
+        vStart,
+        vEnd,
+        shareStart,
+        shareEnd,
         absChange,
         pctChange,
         ppChange,
         isNewSection: s.votes2018 === undefined,
       };
     });
-  }, [selectedMun, selectedZone, searchQuery, candidate.id]);
+  }, [selectedMun, selectedZone, searchQuery, candidate.id, filters.startYear, filters.endYear]);
 
   // Seções com maiores ganhos e perdas (excluindo N/D)
   const validDeltas = enrichedSections.filter((s) => s.absChange !== null);
@@ -165,13 +182,53 @@ export const ZonesSectionsView: React.FC = () => {
               Escaneamento no menor nível de agregação oficial da urna eletrônica com controle estrito de ausência de dados (N/D).
             </p>
           </div>
-          <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-md transition-colors self-start md:self-auto"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Exportar Seções Filtradas</span>
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Seletor Rápido de Ciclos */}
+            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-md text-xs">
+              <span className="text-[11px] text-neutral-500 font-medium px-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-neutral-400" />
+                Ciclo:
+              </span>
+              <button
+                onClick={() => setFilters((f) => ({ ...f, startYear: 2018, endYear: 2022 }))}
+                className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
+                  filters.startYear === 2018 && filters.endYear === 2022
+                    ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                2018→'22
+              </button>
+              <button
+                onClick={() => setFilters((f) => ({ ...f, startYear: 2022, endYear: 2026 }))}
+                className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
+                  filters.startYear === 2022 && filters.endYear === 2026
+                    ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                2022→'26
+              </button>
+              <button
+                onClick={() => setFilters((f) => ({ ...f, startYear: 2018, endYear: 2026 }))}
+                className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
+                  filters.startYear === 2018 && filters.endYear === 2026
+                    ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                2018→'26
+              </button>
+            </div>
+
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-md transition-colors self-start md:self-auto cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Exportar Seções</span>
+            </button>
+          </div>
         </div>
 
         {/* Filtros em Linha */}
@@ -377,18 +434,22 @@ export const ZonesSectionsView: React.FC = () => {
                 <th className="py-2.5 px-3 font-semibold">Zona</th>
                 <th className="py-2.5 px-3 font-semibold">Seção</th>
                 <th className="py-2.5 px-3 font-semibold">Local e Bairro</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Votos 2018</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Votos 2022</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Dif. Absoluta</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Variação %</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Part. 2022</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Variação p.p.</th>
-                <th className="py-2.5 px-3 font-semibold text-right">Válidos 2022</th>
+                <th className="py-2.5 px-3 font-semibold text-right font-mono">2018</th>
+                <th className="py-2.5 px-3 font-semibold text-right font-mono">2022</th>
+                <th className="py-2.5 px-3 font-semibold text-right font-mono">2026</th>
+                <th className="py-2.5 px-3 font-semibold text-right">
+                  Δ ({filters.startYear}→{filters.endYear})
+                </th>
+                <th className="py-2.5 px-3 font-semibold text-right">Var. %</th>
+                <th className="py-2.5 px-3 font-semibold text-right">Part. {filters.endYear}</th>
+                <th className="py-2.5 px-3 font-semibold text-right">Var. p.p.</th>
+                <th className="py-2.5 px-3 font-semibold text-right">Válidos {filters.endYear}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 bg-white">
               {enrichedSections.map((s) => {
                 const isPositive = (s.absChange ?? 0) >= 0;
+                const validEnd = filters.endYear === 2018 ? s.valid18 : filters.endYear === 2022 ? s.valid22 : s.valid26;
                 return (
                   <tr
                     key={s.sectionId}
@@ -409,6 +470,9 @@ export const ZonesSectionsView: React.FC = () => {
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-semibold text-neutral-900">
                       {s.v22 !== undefined ? formatNumber(s.v22) : 'N/D'}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-emerald-900">
+                      {s.v26 !== undefined ? formatNumber(s.v26) : 'N/D'}
                     </td>
                     <td
                       className={`py-2.5 px-3 text-right font-mono font-bold ${
@@ -433,7 +497,7 @@ export const ZonesSectionsView: React.FC = () => {
                       {s.pctChange !== null ? formatPercent(s.pctChange, 1) : 'N/D'}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-neutral-900 font-medium">
-                      {s.share22 !== undefined ? formatPercent(s.share22, 1) : 'N/D'}
+                      {s.shareEnd !== undefined ? formatPercent(s.shareEnd, 1) : 'N/D'}
                     </td>
                     <td
                       className={`py-2.5 px-3 text-right font-mono ${
@@ -447,7 +511,7 @@ export const ZonesSectionsView: React.FC = () => {
                       {s.ppChange !== null ? formatPP(s.ppChange, 1) : 'N/D'}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-neutral-600">
-                      {s.valid22 !== undefined ? formatNumber(s.valid22) : 'N/D'}
+                      {validEnd !== undefined ? formatNumber(validEnd) : 'N/D'}
                     </td>
                   </tr>
                 );

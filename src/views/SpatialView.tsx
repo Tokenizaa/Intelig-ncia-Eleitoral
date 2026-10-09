@@ -9,6 +9,7 @@ import {
   Maximize2,
   Compass,
   Map as MapIcon,
+  Calendar,
 } from 'lucide-react';
 import { useFilter } from '../context/FilterContext';
 import { CANDIDATES, MUNICIPALITIES_DATA, MUNICIPALITIES_GEO, RAW_SECTIONS } from '../data/mockElections';
@@ -22,12 +23,17 @@ import {
 import { ElectoralMapLeaflet, MapMetricType } from '../components/ElectoralMapLeaflet';
 
 export const SpatialView: React.FC = () => {
-  const { filters, setActiveTab, setSelectedMunicipalityForDetail } = useFilter();
+  const { filters, setFilters, setActiveTab, setSelectedMunicipalityForDetail } = useFilter();
   const [selectedMunId, setSelectedMunId] = useState<string>('caxias_do_sul');
   const [mapEngine, setMapEngine] = useState<'leaflet' | 'vector'>('leaflet');
 
   const candidate = CANDIDATES.find((c) => c.id === filters.mainCandidateId) || CANDIDATES[0];
-  const rows = computeMunicipalityMetrics(MUNICIPALITIES_DATA, candidate.id);
+  const rows = computeMunicipalityMetrics(
+    MUNICIPALITIES_DATA,
+    candidate.id,
+    filters.startYear,
+    filters.endYear
+  );
 
   const selectedRow = rows.find((r) => r.municipality.id === selectedMunId) || rows[0];
   const selectedSections = RAW_SECTIONS.filter((s) => s.municipalityId === selectedRow.municipality.id);
@@ -47,30 +53,70 @@ export const SpatialView: React.FC = () => {
             </p>
           </div>
 
-          {/* Alternador de Motor Cartográfico (Leaflet GIS vs Vetor Sintético) */}
-          <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-md text-xs self-start md:self-auto">
-            <button
-              onClick={() => setMapEngine('leaflet')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-colors cursor-pointer ${
-                mapEngine === 'leaflet'
-                  ? 'bg-white text-emerald-900 font-bold shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
-            >
-              <Compass className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Mapa Leaflet / GIS</span>
-            </button>
-            <button
-              onClick={() => setMapEngine('vector')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-colors cursor-pointer ${
-                mapEngine === 'vector'
-                  ? 'bg-white text-neutral-900 font-bold shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
-            >
-              <MapIcon className="w-3.5 h-3.5 text-neutral-600" />
-              <span>Malha Esquemática</span>
-            </button>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Seletor Rápido de Ciclos */}
+            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-md text-xs">
+              <span className="text-[11px] text-neutral-500 font-medium px-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-neutral-400" />
+                Ciclo:
+              </span>
+              <button
+                onClick={() => setFilters((f) => ({ ...f, startYear: 2018, endYear: 2022 }))}
+                className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
+                  filters.startYear === 2018 && filters.endYear === 2022
+                    ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                2018→'22
+              </button>
+              <button
+                onClick={() => setFilters((f) => ({ ...f, startYear: 2022, endYear: 2026 }))}
+                className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
+                  filters.startYear === 2022 && filters.endYear === 2026
+                    ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                2022→'26
+              </button>
+              <button
+                onClick={() => setFilters((f) => ({ ...f, startYear: 2018, endYear: 2026 }))}
+                className={`px-2 py-1 rounded font-medium transition-colors cursor-pointer ${
+                  filters.startYear === 2018 && filters.endYear === 2026
+                    ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                2018→'26
+              </button>
+            </div>
+
+            {/* Alternador de Motor Cartográfico (Leaflet GIS vs Vetor Sintético) */}
+            <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-md text-xs self-start md:self-auto">
+              <button
+                onClick={() => setMapEngine('leaflet')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-colors cursor-pointer ${
+                  mapEngine === 'leaflet'
+                    ? 'bg-white text-emerald-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                <Compass className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Mapa Leaflet / GIS</span>
+              </button>
+              <button
+                onClick={() => setMapEngine('vector')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded font-medium transition-colors cursor-pointer ${
+                  mapEngine === 'vector'
+                    ? 'bg-white text-neutral-900 font-bold shadow-xs'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                <MapIcon className="w-3.5 h-3.5 text-neutral-600" />
+                <span>Malha Esquemática</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -157,27 +203,31 @@ export const SpatialView: React.FC = () => {
               <strong className="text-neutral-900">{selectedRow.municipality.region}</strong>
             </div>
             <div className="flex justify-between py-1 border-b border-neutral-50">
-              <span className="text-neutral-500">Votos em 2022:</span>
-              <strong className="font-mono text-neutral-900">{formatNumber(selectedRow.votes2022)}</strong>
-            </div>
-            <div className="flex justify-between py-1 border-b border-neutral-50">
               <span className="text-neutral-500">Votos em 2018:</span>
               <strong className="font-mono text-neutral-700">{formatNumber(selectedRow.votes2018)}</strong>
             </div>
             <div className="flex justify-between py-1 border-b border-neutral-50">
-              <span className="text-neutral-500">Saldo Líquido (Δ):</span>
+              <span className="text-neutral-500">Votos em 2022:</span>
+              <strong className="font-mono text-neutral-900">{formatNumber(selectedRow.votes2022)}</strong>
+            </div>
+            <div className="flex justify-between py-1 border-b border-neutral-50">
+              <span className="text-neutral-500">Votos em 2026:</span>
+              <strong className="font-mono text-emerald-900">{formatNumber(selectedRow.votes2026)}</strong>
+            </div>
+            <div className="flex justify-between py-1 border-b border-neutral-50">
+              <span className="text-neutral-500">Saldo ({filters.startYear}→{filters.endYear}):</span>
               <strong
                 className={`font-mono ${
                   selectedRow.absChange >= 0 ? 'text-emerald-700' : 'text-rose-700'
                 }`}
               >
-                {formatChange(selectedRow.absChange)} ({formatPercent(selectedRow.pctChange, 1)})
+                {formatChange(selectedRow.absChange)} ({selectedRow.pctChange !== null ? formatPercent(selectedRow.pctChange, 1) : 'N/D'})
               </strong>
             </div>
             <div className="flex justify-between py-1 border-b border-neutral-50">
-              <span className="text-neutral-500">Participação em Válidos:</span>
+              <span className="text-neutral-500">Participação {filters.endYear}:</span>
               <strong className="font-mono text-neutral-900">
-                {formatPercent(selectedRow.share2022, 2)} ({formatPP(selectedRow.ppChange, 2)})
+                {formatPercent(selectedRow.shareEnd, 2)} ({formatPP(selectedRow.ppChange, 2)})
               </strong>
             </div>
             <div className="flex justify-between py-1 border-b border-neutral-50">
